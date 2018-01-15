@@ -1,10 +1,12 @@
 /*
  * Jailhouse, a Linux-based partitioning hypervisor
  *
- * Copyright (c) ARM Limited, 2014
+ * Copyright (c) Retotech AB, 2017
+ * Copyright (c) Siemens AG, 2017
  *
  * Authors:
- *  Jean-Philippe Brucker <jean-philippe.brucker@arm.com>
+ *  Jonas Weståker <jonas@retotech.se>
+ *  Henning Schild <henning.schild@siemens.com>
  *
  * This work is licensed under the terms of the GNU GPL, version 2.  See
  * the COPYING file in the top-level directory.
@@ -36,69 +38,48 @@
  * THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef _JAILHOUSE_INMATE_H
-#define _JAILHOUSE_INMATE_H
+#include <inmate.h>
 
-typedef signed char s8;
-typedef unsigned char u8;
+#define PCI_MMIO_SIZE	0xfffff
+static u32 mmio_base;
 
-typedef signed short s16;
-typedef unsigned short u16;
-
-typedef signed int s32;
-typedef unsigned int u32;
-
-typedef signed long long s64;
-typedef unsigned long long u64;
-
-static inline u8 mmio_read8(void *address)
+void pci_set_mmio_base(u32 base)
 {
-	return *(volatile u8 *)address;
+	mmio_base = base;
 }
 
-static inline void mmio_write8(void *address, u8 value)
+u32 pci_read_config(u16 bdf, unsigned int addr, unsigned int size)
 {
-	*(volatile u8 *)address = value;
+	u32 reg_addr = mmio_base | ((u32)bdf << 8) | (addr & 0xfc);
+	if (!mmio_base || reg_addr + size >= (mmio_base + PCI_MMIO_SIZE))
+		return -1;
+
+	switch (size) {
+	case 1:
+		return mmio_read8((u8 *)(reg_addr + (addr & 0x3)));
+	case 2:
+		return mmio_read16((u16 *)(reg_addr + (addr & 0x3)));
+	case 4:
+		return mmio_read32((u32 *)(reg_addr));
+	default:
+		return -1;
+	}
 }
 
-static inline u16 mmio_read16(void *address)
+void pci_write_config(u16 bdf, unsigned int addr, u32 value, unsigned int size)
 {
-	return *(volatile u16 *)address;
+	u32 reg_addr = mmio_base | ((u32)bdf << 8) | (addr & 0xfc);
+	if (!mmio_base || reg_addr + size >= (mmio_base + PCI_MMIO_SIZE))
+		return;
+	switch (size) {
+	case 1:
+		mmio_write8((u8 *)(reg_addr + (addr & 0x3)), value);
+		break;
+	case 2:
+		mmio_write16((u16 *)(reg_addr + (addr & 0x3)), value);
+		break;
+	case 4:
+		mmio_write32((u32 *)(reg_addr), value);
+		break;
+	}
 }
-
-static inline void mmio_write16(void *address, u16 value)
-{
-	*(volatile u16 *)address = value;
-}
-
-static inline u32 mmio_read32(void *address)
-{
-	return *(volatile u32 *)address;
-}
-
-static inline void mmio_write32(void *address, u32 value)
-{
-	*(volatile u32 *)address = value;
-}
-
-static inline void cpu_relax(void)
-{
-	asm volatile("" : : : "memory");
-}
-
-typedef void (*irq_handler_t)(unsigned int);
-void gic_setup(irq_handler_t handler);
-void gic_enable_irq(unsigned int irq);
-
-unsigned long timer_get_frequency(void);
-u64 timer_get_ticks(void);
-u64 timer_ticks_to_ns(u64 ticks);
-void timer_start(u64 timeout);
-
-void pci_set_mmio_base(u32 base);
-
-#include <arch/inmate.h>
-
-#include "../inmate_common.h"
-
-#endif /* !_JAILHOUSE_INMATE_H */
